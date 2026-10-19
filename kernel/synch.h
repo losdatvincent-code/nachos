@@ -113,6 +113,7 @@ private:
   ListThread *wait_queue;   //!< threads waiting to acquire the lock
   bool is_free;             //!< to know if the lock is free
   Thread *owner;            //!< Thread who has acquired the lock
+  int access_counter;
 
 public:
   //! Object type, for validity checks during system calls (must be the first

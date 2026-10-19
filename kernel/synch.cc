@@ -149,6 +149,7 @@ Lock::Lock(char *debugName) {
   is_free = true;
   owner = NULL;
   type = LOCK_TYPE;
+  access_counter = 0;
 }
 
 //----------------------------------------------------------------------
@@ -180,10 +181,11 @@ Lock::Acquire() {
   Thread * nextThread;
   Thread * current_thread = gCurrentThread;
   IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
-  if (is_free || current_thread== owner){
+  if (is_free || current_thread == owner){
     nextThread=current_thread;
     is_free = false;
     owner = current_thread;
+    access_counter++;
   }
   else {
     wait_queue->Append(current_thread); 
@@ -207,14 +209,19 @@ void
 Lock::Release() {
   Thread * current_thread = gCurrentThread;
   IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
-  owner =(Thread *) wait_queue->Remove();
-  if (owner==NULL){
-    is_free = true;}
-  else {
-    gScheduler->ReadyToRun(owner);}
-  gMachine->interrupt->SetStatus(oldLevel);
-  gScheduler->SwitchTo(current_thread);
-
+  if (current_thread==owner) {
+    access_counter--;
+    if (access_counter == 0){
+      owner =(Thread *) wait_queue->Remove();
+      if (owner==NULL){
+        is_free = true;}
+      else {
+        gScheduler->ReadyToRun(owner);
+        access_counter++;}
+      gMachine->interrupt->SetStatus(oldLevel);
+      gScheduler->SwitchTo(current_thread);
+    }
+  }
 }
 
 //----------------------------------------------------------------------
