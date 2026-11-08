@@ -115,6 +115,11 @@ public:
   //! in Release, and in Condition variable operations below.
   bool isHeldByCurrentThread();
 
+#ifdef ETUDIANTS_TP
+  //! vrai si au moins un thread est bloque dans Acquire() (pour LockDestroy)
+  bool HasWaiters() { return !wait_queue->IsEmpty(); }
+#endif
+
 private:
   char *lock_name;          //!< for debugging
   ListThread *wait_queue;   //!< threads waiting to acquire the lock

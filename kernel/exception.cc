@@ -383,6 +383,80 @@ ExceptionHandler(ExceptionType exceptiontype, int vaddr) {
       gMachine->WriteIntRegister(REG_RET_SYSCALL, NO_ERROR);
       break;
     }
+
+    case SC_LOCK_CREATE: {
+      DEBUG('e', (char *) "Synchronisation : appel LockCreate.\n");
+      uint64_t name_addr = gMachine->ReadIntRegister(REG_SYSCALL_PARAM_1);
+      int size = GetLengthParam(name_addr);
+      char name[size];
+      GetStringParam(name_addr, name, size);
+      Lock *lock = new Lock(name);
+      int32_t id = gObjectAddrs->AddObject(lock);
+      gSyscallError->SetMsg((char *) "", NO_ERROR);
+      gMachine->WriteIntRegister(REG_RET_SYSCALL, id);
+      break;
+    }
+
+    case SC_LOCK_DESTROY: {
+      DEBUG('e', (char *) "Synchronisation : appel LockDestroy.\n");
+      int64_t id = gMachine->ReadIntRegister(REG_SYSCALL_PARAM_1);
+      Lock *lock = (Lock *) gObjectAddrs->SearchObject(id);
+      sprintf(msg, "%" PRId64, id);
+      if (lock == NULL || lock->type != LOCK_TYPE) {
+        gSyscallError->SetMsg(msg, INVALID_LOCK_ID);
+        gMachine->WriteIntRegister(REG_RET_SYSCALL, ERROR);
+        break;
+      }
+      if (lock->HasWaiters()) {
+        // echoue si un thread attend ce verrou
+        gSyscallError->SetMsg(msg, INVALID_LOCK_ID);
+        gMachine->WriteIntRegister(REG_RET_SYSCALL, ERROR);
+        break;
+      }
+      gObjectAddrs->RemoveObject(id);
+      delete lock;
+      gSyscallError->SetMsg((char *) "", NO_ERROR);
+      gMachine->WriteIntRegister(REG_RET_SYSCALL, NO_ERROR);
+      break;
+    }
+
+    case SC_LOCK_ACQUIRE: {
+      DEBUG('e', (char *) "Synchronisation : appel LockAcquire.\n");
+      int64_t id = gMachine->ReadIntRegister(REG_SYSCALL_PARAM_1);
+      Lock *lock = (Lock *) gObjectAddrs->SearchObject(id);
+      if (lock == NULL || lock->type != LOCK_TYPE) {
+        sprintf(msg, "%" PRId64, id);
+        gSyscallError->SetMsg(msg, INVALID_LOCK_ID);
+        gMachine->WriteIntRegister(REG_RET_SYSCALL, ERROR);
+        break;
+      }
+      lock->Acquire();   // peut bloquer le thread appelant
+      gSyscallError->SetMsg((char *) "", NO_ERROR);
+      gMachine->WriteIntRegister(REG_RET_SYSCALL, NO_ERROR);
+      break;
+    }
+
+    case SC_LOCK_RELEASE: {
+      DEBUG('e', (char *) "Synchronisation : appel LockRelease.\n");
+      int64_t id = gMachine->ReadIntRegister(REG_SYSCALL_PARAM_1);
+      Lock *lock = (Lock *) gObjectAddrs->SearchObject(id);
+      sprintf(msg, "%" PRId64, id);
+      if (lock == NULL || lock->type != LOCK_TYPE) {
+        gSyscallError->SetMsg(msg, INVALID_LOCK_ID);
+        gMachine->WriteIntRegister(REG_RET_SYSCALL, ERROR);
+        break;
+      }
+      if (!lock->isHeldByCurrentThread()) {
+        // seul le proprietaire du verrou peut le relacher
+        gSyscallError->SetMsg(msg, INVALID_LOCK_ID);
+        gMachine->WriteIntRegister(REG_RET_SYSCALL, ERROR);
+        break;
+      }
+      lock->Release();
+      gSyscallError->SetMsg((char *) "", NO_ERROR);
+      gMachine->WriteIntRegister(REG_RET_SYSCALL, NO_ERROR);
+      break;
+    }
 #endif
 
     case SC_CREATE: {
