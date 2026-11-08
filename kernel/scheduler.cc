@@ -126,8 +126,19 @@ Scheduler::SwitchTo(Thread *nextThread) {
   // point, we were still running on the old thread's stack!
   // Warning: do not use any local variable here, the function
   //   modifies the stack pointer!
+#ifndef ETUDIANTS_TP
   printf("**** Warning: thread actual deletion not implemented yet\n");
-
+#endif
+#ifdef ETUDIANTS_TP
+  // si un thread vient de se terminer (voir Thread::Finish), on le
+  // detruit maintenant : on s'execute desormais sur la pile d'un autre
+  // thread, donc sa pile n'est plus utilisee. on n'utilise que des
+  // variables globales, comme demande dans le commentaire ci-dessus.
+  if (gThreadToBeDestroyed != NULL && gThreadToBeDestroyed != gCurrentThread) {
+    delete gThreadToBeDestroyed;
+    gThreadToBeDestroyed = NULL;
+  }
+#endif
 }
 
 //----------------------------------------------------------------------

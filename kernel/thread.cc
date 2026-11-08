@@ -192,6 +192,17 @@ ThreadPrint(long arg) {
 void
 StartThreadExecution(void) {
   printf("****  Starting thread\n");
+#ifdef ETUDIANTS_TP
+  // on arrive ici lors du tout premier passage sur ce thread. dans ce
+  // cas on ne repasse pas par la fin de Scheduler::SwitchTo, qui est
+  // l'endroit ou l'on detruit le thread qui vient de se terminer.
+  // on fait donc la meme destruction ici, sinon le thread termine juste
+  // avant le demarrage d'un nouveau thread ne serait jamais detruit.
+  if (gThreadToBeDestroyed != NULL && gThreadToBeDestroyed != gCurrentThread) {
+    delete gThreadToBeDestroyed;
+    gThreadToBeDestroyed = NULL;
+  }
+#endif
   gMachine->interrupt->SetStatus(INTERRUPTS_ON);
   gMachine->Run();
   // Should not return there ...
