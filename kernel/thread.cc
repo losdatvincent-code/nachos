@@ -112,8 +112,40 @@ Thread::~Thread() {
 int
 Thread::Start(Process *owner, int64_t func, int64_t arg) {
   ASSERT(process == NULL);
+#ifndef ETUDIANTS_TP
   printf("**** Warning: method Thread::Start is not implemented yet\n");
   exit(ERROR);
+#endif
+#ifdef ETUDIANTS_TP
+  // 1. le thread appartient au processus owner. on lui alloue sa pile
+  //    utilisateur (pile RISC-V) dans l'espace d'adressage du processus.
+  //    StackAllocate renvoie l'adresse du haut de cette pile.
+  process = owner;
+  stack_pointer = process->addrspace->StackAllocate();
+
+  // 2. pile du simulateur : c'est sur cette pile (cote machine hote)
+  //    que s'execute le code de Nachos quand ce thread a le processeur.
+  int8_t *simulator_stack = AllocBoundedArray(SIMULATOR_CTX_SIZE);
+
+  // 3. contexte du simulateur : la premiere fois que l'on passera sur
+  //    ce thread, c'est la fonction StartThreadExecution qui sera lancee
+  //    (elle demarre l'execution des instructions RISC-V).
+  InitSimulatorContext(simulator_stack, SIMULATOR_CTX_SIZE);
+
+  // 4. contexte RISC-V : pc = adresse de la fonction a executer,
+  //    sp = haut de la pile utilisateur, a0 = argument de la fonction.
+  InitThreadContext(func, stack_pointer, arg);
+
+  // 5. on enregistre le thread dans le noyau. ces listes sont partagees
+  //    avec les autres threads, donc on coupe les interruptions.
+  IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
+  process->numThreads++;           // un thread de plus dans le processus
+  gAlive->Append((void *) this);   // liste des threads vivants (pour Join)
+  gScheduler->ReadyToRun(this);    // file des threads prets
+  gMachine->interrupt->SetStatus(oldLevel);
+
+  return NO_ERROR;
+#endif
 }
 
 //----------------------------------------------------------------------
@@ -262,8 +294,32 @@ Thread::Finish() {
 
   DEBUG('t', (char *) "Finishing thread \"%s\"\n", GetName());
 
-
+#ifndef ETUDIANTS_TP
   printf("**** Warning: method Thread::Finish is not fully implemented yet\n");
+#endif
+#ifdef ETUDIANTS_TP
+  // on coupe les interruptions (Sleep() l'exige). on ne les remet pas :
+  // ce thread ne reprendra jamais la main.
+  gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
+
+  // on retire le thread de la liste des threads vivants : Join() attend
+  // tant que le thread attendu est dans gAlive.
+  // (on teste d'abord avec Search, car RemoveItem boucle a l'infini si
+  // l'element n'est pas dans la liste.)
+  if (gAlive->Search((void *) this))
+    gAlive->RemoveItem((void *) this);
+
+  // on retire aussi le thread de la table des objets : ainsi un appel
+  // systeme fait plus tard avec son identifiant (Join par exemple)
+  // obtiendra NULL, au lieu d'un pointeur vers un objet detruit.
+  gObjectAddrs->RemoveObject((void *) this);
+
+  // on ne peut pas faire "delete this" maintenant, car on s'execute
+  // encore sur la pile de ce thread. on note juste qu'il faut le
+  // detruire : c'est le prochain thread elu qui le fera (fin de
+  // Scheduler::SwitchTo, ou StartThreadExecution).
+  gThreadToBeDestroyed = this;
+#endif
 
   // Go to sleep
   Sleep();   // invokes SWITCH
@@ -354,9 +410,22 @@ Thread::Sleep() {
 //----------------------------------------------------------------------
 void
 Thread::SaveProcessorState() {
+#ifndef ETUDIANTS_TP
   printf("**** Warning: method Thread::SaveProcessorState is not implemented "
          "yet\n");
   exit(ERROR);
+#endif
+#ifdef ETUDIANTS_TP
+  // on recopie les registres du processeur RISC-V emule dans le contexte
+  // du thread : registres entiers, registres flottants et pc.
+  // (le pc pointe deja sur l'instruction qui suit le ecall, car il est
+  // incremente au moment ou l'instruction est lue.)
+  for (int i = 0; i < NUM_INT_REGS; i++)
+    thread_context.int_registers[i] = gMachine->ReadIntRegister(i);
+  for (int i = 0; i < NUM_FP_REGS; i++)
+    thread_context.float_registers[i] = gMachine->ReadFPRegister(i);
+  thread_context.pc = gMachine->pc;
+#endif
 }
 
 //----------------------------------------------------------------------
@@ -367,9 +436,22 @@ Thread::SaveProcessorState() {
 
 void
 Thread::RestoreProcessorState() {
+#ifndef ETUDIANTS_TP
   printf("**** Warning: method Thread::RestoreProcessorState is not "
          "implemented yet\n");
   exit(ERROR);
+#endif
+#ifdef ETUDIANTS_TP
+  // l'inverse de SaveProcessorState : on remet dans le processeur les
+  // registres sauvegardes du thread.
+  // (changer aussi la table des pages de la MMU, pour avoir plusieurs
+  // processus, fait partie du TP 2.)
+  for (int i = 0; i < NUM_INT_REGS; i++)
+    gMachine->WriteIntRegister(i, thread_context.int_registers[i]);
+  for (int i = 0; i < NUM_FP_REGS; i++)
+    gMachine->WriteFPRegister(i, thread_context.float_registers[i]);
+  gMachine->pc = thread_context.pc;
+#endif
 }
 
 //----------------------------------------------------------------------

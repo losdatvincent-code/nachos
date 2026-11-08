@@ -90,24 +90,35 @@ Semaphore::~Semaphore() {
 //----------------------------------------------------------------------
 void
 Semaphore::P() {
-  Thread * nextThread;
-  Thread * current_thread = gCurrentThread;
+#ifndef ETUDIANTS_TP
+  printf("**** Warning: method Semaphore::P is not implemented yet\n");
+  exit(ERROR);
+#endif
+#ifdef ETUDIANTS_TP
+  // version du cours ou le compteur peut devenir negatif :
+  // si count vaut -n, alors n threads sont bloques dans wait_queue.
+
+  // on coupe les interruptions pour que P() soit atomique : aucun autre
+  // thread ne doit pouvoir passer entre le test du compteur et la mise
+  // en attente.
   IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
+
   count--;
-  if (count <0) {
-    wait_queue->Append(current_thread); 
-    nextThread = gScheduler->FindNextToRun();
-      
-        
-      
-    }
-  else {
-    nextThread =current_thread;
+  if (count < 0) {
+    // plus de place : le thread se met dans la file du semaphore et
+    // s'endort. Sleep() donne le processeur a un autre thread pret, ou
+    // attend une interruption s'il n'y en a aucun (par exemple la fin
+    // d'une lecture disque). on ressort de Sleep() quand un V() nous a
+    // remis dans la file des threads prets.
+    DEBUG('s', (char *) "%s se bloque sur le semaphore %s\n",
+          gCurrentThread->GetName(), semaphore_name);
+    wait_queue->Append((void *) gCurrentThread);
+    gCurrentThread->Sleep();
   }
 
+  // on remet les interruptions comme on les a trouvees
   gMachine->interrupt->SetStatus(oldLevel);
-  gScheduler->SwitchTo(nextThread);
-  
+#endif
 }
 
 //----------------------------------------------------------------------
@@ -121,18 +132,27 @@ Semaphore::P() {
 //----------------------------------------------------------------------
 void
 Semaphore::V() {
-  Thread *nextThread;
+#ifndef ETUDIANTS_TP
+  printf("**** Warning: method Semaphore::V is not implemented yet\n");
+  exit(ERROR);
+#endif
+#ifdef ETUDIANTS_TP
   IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
-  if (count <0){
-    nextThread = (Thread *) wait_queue->Remove();
-    gScheduler->ReadyToRun(nextThread);
-       
-  }
-  
-  count++;
-  gMachine->interrupt->SetStatus(oldLevel);
 
-  gScheduler->ReadyToRun(gCurrentThread); 
+  count++;
+  if (count <= 0) {
+    // avant l'incrementation le compteur etait negatif, donc au moins un
+    // thread attend : on reveille le premier de la file en le remettant
+    // dans la file des threads prets.
+    Thread *t = (Thread *) wait_queue->Remove();
+    gScheduler->ReadyToRun(t);
+  }
+
+  // remarque : V() ne bloque jamais et ne change jamais de thread, car il
+  // est aussi appele par les routines d'interruption des drivers (console,
+  // disque), ou on n'a pas le droit de changer de thread.
+  gMachine->interrupt->SetStatus(oldLevel);
+#endif
 }
 
 //----------------------------------------------------------------------
@@ -149,7 +169,9 @@ Lock::Lock(char *debugName) {
   is_free = true;
   owner = NULL;
   type = LOCK_TYPE;
-  access_counter = 0;
+#ifdef ETUDIANTS_TP
+  nb_acquire = 0;
+#endif
 }
 
 //----------------------------------------------------------------------
@@ -178,23 +200,35 @@ Lock::~Lock() {
 //----------------------------------------------------------------------
 void
 Lock::Acquire() {
-  Thread * nextThread;
-  Thread * current_thread = gCurrentThread;
+#ifndef ETUDIANTS_TP
+  printf("**** Warning: method Lock::Acquire is not implemented yet\n");
+  exit(ERROR);
+#endif
+#ifdef ETUDIANTS_TP
   IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
-  if (is_free || current_thread == owner){
-    nextThread=current_thread;
-    is_free = false;
-    owner = current_thread;
-    access_counter++;
-  }
-  else {
-    wait_queue->Append(current_thread); 
-    nextThread = gScheduler->FindNextToRun();
-  }
-  gMachine->interrupt->SetStatus(oldLevel);
-  gScheduler->SwitchTo(nextThread);
 
- 
+  if (is_free) {
+    // cas 1 : le verrou est libre, on le prend.
+    is_free = false;
+    owner = gCurrentThread;
+    nb_acquire = 1;
+  } else if (owner == gCurrentThread) {
+    // cas 2 : on a deja le verrou (comme demande dans le sujet, on ne se
+    // bloque pas, sinon on attendrait pour toujours que l'on se libere
+    // soi-meme). on compte juste un Acquire de plus.
+    nb_acquire++;
+  } else {
+    // cas 3 : le verrou est pris par un autre thread, on attend.
+    // quand on sera reveille, Release() nous aura deja donne le verrou
+    // (owner = nous, voir Lock::Release) : il n'y a rien d'autre a faire.
+    DEBUG('s', (char *) "%s se bloque sur le verrou %s\n",
+          gCurrentThread->GetName(), lock_name);
+    wait_queue->Append((void *) gCurrentThread);
+    gCurrentThread->Sleep();
+  }
+
+  gMachine->interrupt->SetStatus(oldLevel);
+#endif
 }
 
 //----------------------------------------------------------------------
@@ -207,21 +241,39 @@ Lock::Acquire() {
 //----------------------------------------------------------------------
 void
 Lock::Release() {
-  Thread * current_thread = gCurrentThread;
+#ifndef ETUDIANTS_TP
+  printf("**** Warning: method Lock::Release is not implemented yet\n");
+  exit(ERROR);
+#endif
+#ifdef ETUDIANTS_TP
   IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
-  if (current_thread==owner) {
-    access_counter--;
-    if (access_counter == 0){
-      owner =(Thread *) wait_queue->Remove();
-      if (owner==NULL){
-        is_free = true;}
-      else {
-        gScheduler->ReadyToRun(owner);
-        access_counter++;}
-      gMachine->interrupt->SetStatus(oldLevel);
-      gScheduler->SwitchTo(current_thread);
+
+  // seul le proprietaire a le droit de relacher le verrou. l'appel
+  // systeme LockRelease le verifie avant de nous appeler, donc si ce
+  // test echoue c'est une erreur dans le noyau.
+  ASSERT(owner == gCurrentThread);
+
+  nb_acquire--;
+  if (nb_acquire == 0) {
+    // c'est le dernier Release (autant de Release que d'Acquire) : le
+    // verrou doit etre libere.
+    Thread *t = (Thread *) wait_queue->Remove();
+    if (t == NULL) {
+      // personne n'attend : le verrou devient libre.
+      is_free = true;
+      owner = NULL;
+    } else {
+      // quelqu'un attend : on lui donne directement le verrou. le verrou
+      // reste pris, il change juste de proprietaire, donc aucun autre
+      // thread ne peut le prendre avant lui (ordre d'arrivee respecte).
+      owner = t;
+      nb_acquire = 1;
+      gScheduler->ReadyToRun(t);
     }
   }
+
+  gMachine->interrupt->SetStatus(oldLevel);
+#endif
 }
 
 //----------------------------------------------------------------------
