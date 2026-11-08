@@ -62,6 +62,13 @@ public:
   void P();   // these are the only operations on a semaphore
   void V();   // they are both *atomic*
 
+#ifdef ETUDIANTS_TP
+  //! vrai si au moins un thread est bloque dans P(). sert a l'appel
+  //! systeme SemDestroy, qui doit echouer dans ce cas (wait_queue est
+  //! privee, on ne peut pas la regarder depuis exception.cc).
+  bool HasWaiters() { return !wait_queue->IsEmpty(); }
+#endif
+
 private:
   char *semaphore_name;     //!< useful for debugging
   int count;                //!< semaphore counter
@@ -113,7 +120,10 @@ private:
   ListThread *wait_queue;   //!< threads waiting to acquire the lock
   bool is_free;             //!< to know if the lock is free
   Thread *owner;            //!< Thread who has acquired the lock
-  int access_counter;
+#ifdef ETUDIANTS_TP
+  int nb_acquire;           //!< nombre d'Acquire du proprietaire pas encore
+                            //!< compenses par un Release (verrou reentrant)
+#endif
 
 public:
   //! Object type, for validity checks during system calls (must be the first

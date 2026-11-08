@@ -4,7 +4,7 @@
 #   ./tp1_tests.sh -v    affiche aussi le detail
 
 echo "tests normaux (tout doit passer) :"
-for t in test_threads
+for t in test_sem test_rw test_threads
 do
   if [ "$1" = "-v" ]; then
     ./nachos -f tp1.cfg -x /$t | grep -E '^ *\[|^--|PError'

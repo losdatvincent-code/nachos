@@ -283,6 +283,108 @@ ExceptionHandler(ExceptionType exceptiontype, int vaddr) {
       break;
     }
 
+#ifdef ETUDIANTS_TP
+      // ---------------------------------------------------------------
+      // appels systeme de synchronisation (TP 1)
+      //
+      // principe commun : le programme utilisateur ne manipule jamais
+      // directement les objets du noyau, il n'a qu'un identifiant (un
+      // entier). a la creation, on range l'objet dans gObjectAddrs, qui
+      // donne un identifiant. ensuite, a chaque appel :
+      //   1. on lit l'identifiant dans le registre a0 (REG_SYSCALL_PARAM_1)
+      //   2. on retrouve l'objet avec gObjectAddrs->SearchObject
+      //   3. on verifie que l'objet existe et qu'il est du bon type (champ
+      //      type), sinon le programme pourrait nous passer n'importe quoi
+      //      (un verrou a la place d'un semaphore, un objet detruit...)
+      //   4. on appelle la methode, puis on ecrit le resultat dans a0
+      //      (REG_RET_SYSCALL) : NO_ERROR, ou ERROR avec un message pour
+      //      PError.
+      // pour P, LockAcquire et CondWait, qui peuvent bloquer, le resultat
+      // est ecrit apres le reveil : a ce moment, les registres du
+      // processeur sont de nouveau ceux du thread appelant.
+      // ---------------------------------------------------------------
+
+    case SC_SEM_CREATE: {
+      DEBUG('e', (char *) "Synchronisation : appel SemCreate.\n");
+      // parametres : adresse du nom (pour le debogage) et valeur initiale
+      uint64_t name_addr = gMachine->ReadIntRegister(REG_SYSCALL_PARAM_1);
+      int count = (int) gMachine->ReadIntRegister(REG_SYSCALL_PARAM_2);
+      if (count < 0) {
+        // un compteur initial negatif n'a pas de sens
+        gSyscallError->SetMsg((char *) "", INVALID_COUNTER);
+        gMachine->WriteIntRegister(REG_RET_SYSCALL, ERROR);
+        break;
+      }
+      // on recopie le nom depuis la memoire du programme utilisateur
+      int size = GetLengthParam(name_addr);
+      char name[size];
+      GetStringParam(name_addr, name, size);
+      // on cree le semaphore et on renvoie son identifiant
+      Semaphore *sema = new Semaphore(name, count);
+      int32_t id = gObjectAddrs->AddObject(sema);
+      gSyscallError->SetMsg((char *) "", NO_ERROR);
+      gMachine->WriteIntRegister(REG_RET_SYSCALL, id);
+      break;
+    }
+
+    case SC_SEM_DESTROY: {
+      DEBUG('e', (char *) "Synchronisation : appel SemDestroy.\n");
+      int64_t id = gMachine->ReadIntRegister(REG_SYSCALL_PARAM_1);
+      Semaphore *sema = (Semaphore *) gObjectAddrs->SearchObject(id);
+      sprintf(msg, "%" PRId64, id);
+      if (sema == NULL || sema->type != SEMAPHORE_TYPE) {
+        gSyscallError->SetMsg(msg, INVALID_SEMAPHORE_ID);
+        gMachine->WriteIntRegister(REG_RET_SYSCALL, ERROR);
+        break;
+      }
+      if (sema->HasWaiters()) {
+        // le sujet demande d'echouer si un thread est bloque dessus
+        gSyscallError->SetMsg(msg, INVALID_SEMAPHORE_ID);
+        gMachine->WriteIntRegister(REG_RET_SYSCALL, ERROR);
+        break;
+      }
+      // on l'enleve de la table avant de le detruire : son identifiant
+      // ne sera plus reconnu par les appels suivants
+      gObjectAddrs->RemoveObject(id);
+      delete sema;
+      gSyscallError->SetMsg((char *) "", NO_ERROR);
+      gMachine->WriteIntRegister(REG_RET_SYSCALL, NO_ERROR);
+      break;
+    }
+
+    case SC_P: {
+      DEBUG('e', (char *) "Synchronisation : appel P.\n");
+      int64_t id = gMachine->ReadIntRegister(REG_SYSCALL_PARAM_1);
+      Semaphore *sema = (Semaphore *) gObjectAddrs->SearchObject(id);
+      if (sema == NULL || sema->type != SEMAPHORE_TYPE) {
+        sprintf(msg, "%" PRId64, id);
+        gSyscallError->SetMsg(msg, INVALID_SEMAPHORE_ID);
+        gMachine->WriteIntRegister(REG_RET_SYSCALL, ERROR);
+        break;
+      }
+      sema->P();   // peut bloquer le thread appelant
+      gSyscallError->SetMsg((char *) "", NO_ERROR);
+      gMachine->WriteIntRegister(REG_RET_SYSCALL, NO_ERROR);
+      break;
+    }
+
+    case SC_V: {
+      DEBUG('e', (char *) "Synchronisation : appel V.\n");
+      int64_t id = gMachine->ReadIntRegister(REG_SYSCALL_PARAM_1);
+      Semaphore *sema = (Semaphore *) gObjectAddrs->SearchObject(id);
+      if (sema == NULL || sema->type != SEMAPHORE_TYPE) {
+        sprintf(msg, "%" PRId64, id);
+        gSyscallError->SetMsg(msg, INVALID_SEMAPHORE_ID);
+        gMachine->WriteIntRegister(REG_RET_SYSCALL, ERROR);
+        break;
+      }
+      sema->V();
+      gSyscallError->SetMsg((char *) "", NO_ERROR);
+      gMachine->WriteIntRegister(REG_RET_SYSCALL, NO_ERROR);
+      break;
+    }
+#endif
+
     case SC_CREATE: {
       // The create system call
       // Create a new file in nachos file system
