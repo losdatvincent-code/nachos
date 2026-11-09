@@ -69,20 +69,20 @@ AddrSpace::AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err) {
   translationTable = NULL;
   freePageId = 0;
   process = p;
-  #ifdef ETUDIANTS_TP
+#ifdef ETUDIANTS_TP
+  // Fichier exécutable, possédé par Process (ne pas le détruire ici)
   execFile = elfFile;
   elfPages = NULL;
-  #endif
+#endif
   char is32Bits = 0;
-
 
   /* Empty user address space requested ? */
   if (elfFile == NULL) {
     // Allocate translation table now
     translationTable = new TranslationTable();
-    #ifdef ETUDIANTS_TP
+#ifdef ETUDIANTS_TP
     elfPages = new ElfPageInfo[translationTable->getMaxNumPages()]();
-    #endif
+#endif
     return;
   }
 
@@ -110,9 +110,9 @@ AddrSpace::AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err) {
 
   // Create an empty translation table
   translationTable = new TranslationTable();
-  #ifdef ETUDIANTS_TP
+#ifdef ETUDIANTS_TP
   elfPages = new ElfPageInfo[translationTable->getMaxNumPages()]();
-  #endif
+#endif
 
   // Compute the highest virtual address to init the translation table
   uint64_t mem_topaddr = 0;
@@ -141,101 +141,7 @@ AddrSpace::AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err) {
     DEBUG('a', (char *) "Section %d : size=0x%x name=\"%s\"\n", i,
           elff.getShSize(i), section_name);
 
-    // Ignore empty sections
-    if (elff.getShSize(i) <= 0)
-      continue;
-
-    // Look if this section has to be loaded (SHF_ALLOC flag)
-    if (!(elff.getShFlags(i) & SHF_ALLOC))
-      continue;
-
-    printf("\t- Section %s : file offset 0x%x, size 0x%x, addr 0x%x, %s%s\n",
-           section_name, (unsigned) elff.getShOffset(i),
-           (unsigned) elff.getShSize(i), (unsigned) elff.getShAddr(i),
-           (elff.getShFlags(i) & SHF_WRITE) ? "R/W" : "R",
-           (elff.getShFlags(i) & SHF_EXECINSTR) ? "/X" : "");
-
-    // Make sure section is aligned on page boundary
-    ASSERT((elff.getShAddr(i) % gConfig->PageSize) == 0);
-
-
-    // Initializes the page table entries and loads the section
-    // in memory (demand paging will be implemented later on)
-    for (unsigned int pgdisk = 0,
-                      virt_page = elff.getShAddr(i) / gConfig->PageSize;
-         pgdisk < divRoundUp(elff.getShSize(i), gConfig->PageSize);
-         pgdisk++, virt_page++) {
-
-      /* Without demand paging */
-
-      // Set up default values for the page table entry
-      translationTable->clearBitSwap(virt_page);
-      translationTable->setBitReadAllowed(virt_page);
-
-      #ifdef ETUDIANTS_TP
-      // Propriétés ELF de la page, pour le chargement à la demande
-      uint64_t done = (uint64_t) pgdisk * gConfig->PageSize;
-      uint64_t remaining = elff.getShSize(i) - done;
-      ElfPageInfo &info = elfPages[virt_page];
-      info.inElf = true;
-      info.noBits = (elff.getShType(i) == SHT_NOBITS);
-      info.offset = info.noBits ? -1 : (int64_t) (elff.getShOffset(i) + done);
-      info.size = (remaining < (uint64_t) gConfig->PageSize)
-                      ? (int) remaining
-                      : gConfig->PageSize;
-      #endif
-
-      if (elff.getShFlags(i) & SHF_WRITE)
-        translationTable->setBitWriteAllowed(virt_page);
-      else
-        translationTable->clearBitWriteAllowed(virt_page);
-      translationTable->clearBitIo(virt_page);
-
-      // Get a page in physical memory, halt of there is not sufficient space
-      int pp = gPhysicalMemManager->FindFreePage();
-      if (pp == INVALID_PAGE) {
-        printf("Not enough free space to load program %s\n",
-               elfFile->GetName());
-        gMachine->interrupt->Halt(ERROR);
-      }
-      gPhysicalMemManager->tpr[pp].virtualPage = virt_page;
-      gPhysicalMemManager->tpr[pp].owner = this;
-      gPhysicalMemManager->tpr[pp].locked = true;
-      translationTable->setPhysicalPage(virt_page, pp);
-
-      // The SHT_NOBITS flag indicates if the section has an image
-      // in the executable file (text or data section) or not
-      // (bss section)
-      if (elff.getShType(i) != SHT_NOBITS) {
-        // The section has an image in the executable file
-        // Read it from the disk
-        elfFile->ReadAt(
-            (char *) &(gMachine->mainMemory[translationTable->getPhysicalPage(
-                                                 virt_page) *
-                                             gConfig->PageSize]),
-            gConfig->PageSize, elff.getShOffset(i) + pgdisk * gConfig->PageSize);
-
-      } else {
-        // The section does not have an image in the executable
-        // Fill it with zeroes
-        memset(&(gMachine
-                     ->mainMemory[translationTable->getPhysicalPage(virt_page) *
-                                  gConfig->PageSize]),
-               0, gConfig->PageSize);
-      }
-
-      // The page has been loded in physical memory but
-      // later-on will be saved in the swap disk. We have to indicate this
-      // in the translation table
-      translationTable->setAddrDisk(virt_page, INVALID_SECTOR);
-
-      // The entry is valid
-      translationTable->setBitValid(virt_page);
-
-      /* End of code without demand paging */
-    }
-  }
-
+    // Ignore empty
   // Get program start address
   CodeStartAddress = (int32_t) elff.getEntry();
   printf("\t- Program start address : 0x%lx\n\n",
@@ -315,10 +221,11 @@ AddrSpace::StackAllocate(void) {
         stackBasePage * gConfig->PageSize,
         (stackBasePage + numPages) * gConfig->PageSize);
 
-  for (int i = stackBasePage; i < (stackBasePage + numPages); i++) {
+  #ifdef ETUDIANTS_TP
+  //for (int i = stackBasePage; i < (stackBasePage + numPages); i++) {
     /* Without demand paging */
     // Allocate a new physical page for the stack, halt if not page available
-    int pp = gPhysicalMemManager->FindFreePage();
+  /*  int pp = gPhysicalMemManager->FindFreePage();
     if (pp == INVALID_PAGE) {
       printf("Not enough free space to load stack\n");
       gMachine->interrupt->Halt(ERROR);
@@ -337,9 +244,10 @@ AddrSpace::StackAllocate(void) {
     translationTable->clearBitSwap(i);
     translationTable->setBitReadAllowed(i);
     translationTable->setBitWriteAllowed(i);
-    translationTable->clearBitIo(i);
+    translationTable->clearBitIo(i);*/
     /* End of code without demand paging */
-  }
+  //}
+  #endif
 
   int stackpointer =
       (stackBasePage + numPages) * gConfig->PageSize - 4 * sizeof(int);
