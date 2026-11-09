@@ -321,11 +321,15 @@ Condition::~Condition() {
 //----------------------------------------------------------------------
 void
 Condition::Wait() {
+  #ifndef ETUDIANTS_TP
   printf("**** Warning: method Condition::Wait is not implemented yet\n");
   exit(ERROR);
 
+  wait_queue->Append((void *) gCurrentThread);
+  gCurrentThread->Sleep();
 
-
+  gMachine->interrupt->SetStatus(oldLevel);
+  #endif
 }
 
 //----------------------------------------------------------------------
