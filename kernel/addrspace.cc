@@ -69,12 +69,20 @@ AddrSpace::AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err) {
   translationTable = NULL;
   freePageId = 0;
   process = p;
+  #ifdef ETUDIANTS_TP
+  execFile = elfFile;
+  elfPages = NULL;
+  #endif
   char is32Bits = 0;
+
 
   /* Empty user address space requested ? */
   if (elfFile == NULL) {
     // Allocate translation table now
     translationTable = new TranslationTable();
+    #ifdef ETUDIANTS_TP
+    elfPages = new ElfPageInfo[translationTable->getMaxNumPages()]();
+    #endif
     return;
   }
 
@@ -102,6 +110,9 @@ AddrSpace::AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err) {
 
   // Create an empty translation table
   translationTable = new TranslationTable();
+  #ifdef ETUDIANTS_TP
+  elfPages = new ElfPageInfo[translationTable->getMaxNumPages()]();
+  #endif
 
   // Compute the highest virtual address to init the translation table
   uint64_t mem_topaddr = 0;
@@ -160,6 +171,19 @@ AddrSpace::AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err) {
       // Set up default values for the page table entry
       translationTable->clearBitSwap(virt_page);
       translationTable->setBitReadAllowed(virt_page);
+
+      #ifdef ETUDIANTS_TP
+      // Propriétés ELF de la page, pour le chargement à la demande
+      uint64_t done = (uint64_t) pgdisk * gConfig->PageSize;
+      uint64_t remaining = elff.getShSize(i) - done;
+      ElfPageInfo &info = elfPages[virt_page];
+      info.inElf = true;
+      info.noBits = (elff.getShType(i) == SHT_NOBITS);
+      info.offset = info.noBits ? -1 : (int64_t) (elff.getShOffset(i) + done);
+      info.size = (remaining < (uint64_t) gConfig->PageSize)
+                      ? (int) remaining
+                      : gConfig->PageSize;
+      #endif
 
       if (elff.getShFlags(i) & SHF_WRITE)
         translationTable->setBitWriteAllowed(virt_page);
@@ -248,6 +272,9 @@ AddrSpace::~AddrSpace() {
       }
     }
     delete translationTable;
+    #ifdef ETUDIANTS_TP
+    delete[] elfPages;
+    #endif
   }
 }
 

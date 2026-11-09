@@ -52,7 +52,18 @@ typedef s_mapped_file t_mapped_files[MAX_MAPPED_FILES];
  demand paging (on-demand loading of code/data).
 
 */
+#ifdef ETUDIANTS_TP
+//! Propriétés d'une page virtuelle issues du fichier ELF
+struct ElfPageInfo {
+  bool inElf;      //!< la page appartient à une section SHF_ALLOC de l'ELF
+  bool noBits;     //!< section SHT_NOBITS (.bss) : contenu nul, rien à lire
+  int64_t offset;  //!< position du contenu de la page dans le fichier (-1 si noBits)
+  int size;        //!< nombre d'octets utiles de la section dans cette page
+};
+#endif
+
 class AddrSpace {
+
 public:
   /** 	Create an address space to run a user program.
    //	Load the program from a file "elfFile", and set everything
@@ -76,6 +87,11 @@ public:
    //   \param process: process to be executed
    //   \param err: error code 0 if OK, -1 otherwise
    */
+  #ifdef ETUDIANTS_TP
+  OpenFile *execFile;
+  //! Propriétés ELF de chaque page virtuelle, indexées par numéro de page
+  ElfPageInfo *elfPages;
+  #endif
   AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err);
 
   /**   Deallocates an address space and in particular frees
