@@ -323,6 +323,9 @@ void
 Condition::Wait() {
   printf("**** Warning: method Condition::Wait is not implemented yet\n");
   exit(ERROR);
+
+
+
 }
 
 //----------------------------------------------------------------------
@@ -335,6 +338,15 @@ void
 Condition::Signal() {
   printf("**** Warning: method Condition::Signal is not implemented yet\n");
   exit(ERROR);
+  #ifdef ETUDIANTS_TP
+  IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
+
+  Thread *t = (Thread *) wait_queue->Remove();
+  if (t!= NULL){
+    gScheduler->ReadyToRun(t);
+  }
+  gMachine->interrupt->SetStatus(oldLevel);
+  #endif
 }
 
 //----------------------------------------------------------------------
@@ -347,4 +359,16 @@ void
 Condition::Broadcast() {
   printf("**** Warning: method Condition::Broadcast is not implemented yet\n");
   exit(ERROR);
+  #ifdef ETUDIANTS_TP
+  IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
+
+  Thread *t = (Thread *) wait_queue->Remove();
+  while (t!= NULL){
+    gScheduler->ReadyToRun(t);
+    t = (Thread *) wait_queue->Remove();
+  }
+  gMachine->interrupt->SetStatus(oldLevel);
+  #endif
 }
+
+
