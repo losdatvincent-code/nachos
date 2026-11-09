@@ -324,6 +324,9 @@ Condition::Wait() {
   #ifndef ETUDIANTS_TP
   printf("**** Warning: method Condition::Wait is not implemented yet\n");
   exit(ERROR);
+  #endif
+  #ifdef ETUDIANTS_TP
+  IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
 
   wait_queue->Append((void *) gCurrentThread);
   gCurrentThread->Sleep();
@@ -340,8 +343,10 @@ Condition::Wait() {
 //----------------------------------------------------------------------
 void
 Condition::Signal() {
+  #ifndef ETUDIANTS_TP
   printf("**** Warning: method Condition::Signal is not implemented yet\n");
   exit(ERROR);
+  #endif
   #ifdef ETUDIANTS_TP
   IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
 
@@ -361,8 +366,10 @@ Condition::Signal() {
 //----------------------------------------------------------------------
 void
 Condition::Broadcast() {
+  #ifndef ETUDIANTS_TP
   printf("**** Warning: method Condition::Broadcast is not implemented yet\n");
   exit(ERROR);
+  #endif
   #ifdef ETUDIANTS_TP
   IntStatus oldLevel = gMachine->interrupt->SetStatus(INTERRUPTS_OFF);
 
