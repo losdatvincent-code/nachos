@@ -133,7 +133,7 @@ AddrSpace::AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err) {
   DEBUG('a', (char *) "Allocated virtual area [0x0,0x%x[ for program\n",
         mem_topaddr);
 
-  // Loading of all sections
+// Loading of all sections
   for (int i = 0; i < elff.getShNum(); i++) {
     // Retrieve the section name
     const char *section_name = elff.getShName(i);
@@ -141,7 +141,46 @@ AddrSpace::AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err) {
     DEBUG('a', (char *) "Section %d : size=0x%x name=\"%s\"\n", i,
           elff.getShSize(i), section_name);
 
-    // Ignore empty
+    // Ignore empty sections
+    if (elff.getShSize(i) <= 0)
+      continue;
+
+    // Ignore sections not allocated in memory
+    if (!(elff.getShFlags(i) & SHF_ALLOC))
+      continue;
+
+#ifdef ETUDIANTS_TP
+uint64_t section_addr = elff.getShAddr(i);
+uint64_t section_size = elff.getShSize(i);
+uint64_t section_flags = elff.getShFlags(i);
+
+int first_page = section_addr / gConfig->PageSize;
+int last_page = divRoundUp(section_addr + section_size, gConfig->PageSize);
+
+for (int virt_page = first_page; virt_page < last_page; virt_page++) {
+  // Marquer explicitement la page comme non valide
+  translationTable->clearBitValid(virt_page);
+  translationTable->clearBitSwap(virt_page);
+  translationTable->clearBitIo(virt_page);
+  translationTable->setAddrDisk(virt_page, INVALID_SECTOR);
+
+  // Configurer les permissions d'accès (Read/Write)
+  translationTable->setBitReadAllowed(virt_page);
+  if (section_flags & SHF_WRITE) {
+    translationTable->setBitWriteAllowed(virt_page);
+  } else {
+    translationTable->clearBitWriteAllowed(virt_page);
+  }
+
+  // Enregistrer les infos de la section ELF pour le défaut de page
+  elfPages[virt_page].sectionOffset = elff.getShOffset(i);
+  elfPages[virt_page].sectionAddr = section_addr;
+  elfPages[virt_page].sectionSize = section_size;
+  elfPages[virt_page].isBss = (elff.getShType(i) == SHT_NOBITS);
+}
+#endif
+  }
+
   // Get program start address
   CodeStartAddress = (int32_t) elff.getEntry();
   printf("\t- Program start address : 0x%lx\n\n",
