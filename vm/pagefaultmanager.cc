@@ -17,45 +17,45 @@ Routines for the page fault managerPage Fault Manager
 */
 
 #include "vm/pagefaultmanager.h"
+#include "kernel/addrspace.h"
 #include "kernel/msgerror.h"
 #include "kernel/thread.h"
+#include "machine/machine.h"
 #include "vm/physMem.h"
 #include "vm/swapManager.h"
 
 PageFaultManager::PageFaultManager() {}
 
-// PageFaultManager::~PageFaultManager()
-/*! Nothing for now
- */
 PageFaultManager::~PageFaultManager() {}
 
-// ExceptionType PageFault(uint64_t virtualPage)
-/*!
-//	This method is called by the Memory Management Unit when there is a
-//      page fault. This method loads the page from :
-//      - read-only sections (text,rodata) $\Rightarrow$ executive
-//        file
-//      - read/write sections (data,...) $\Rightarrow$ executive
-//        file (1st time only), or swap file
-//      - anonymous mappings (stack/bss) $\Rightarrow$ new
-//        page from the MemoryManager (1st time only), or swap file
-//
-//	\param virtualPage the virtual page subject to the page fault
-//	  (supposed to be between 0 and the
-//        size of the address space, and supposed to correspond to a
-//        page mapped to something [code/data/bss/...])
-//	\return the exception (generally the NO_EXCEPTION constant)
-*/
 ExceptionType
 PageFaultManager::PageFault(uint64_t virtualPage) {
-  #ifdef ETUDIANTS_TP
-    // Demander une case mémoire physique libre (ou évincer une page si la RAM est pleine)
-    int pp = gPhysicalMemManager->FindFreePage();
-    if (pp == INVALID_PAGE) {
-      printf("Not enough free space to handle page fault\n");
-      return BUSERROR_EXCEPTION;
-    }
+#ifdef ETUDIANTS_TP
+  AddrSpace *addrspace = gCurrentThread->GetProcessOwner()->addrspace;
 
-    return NO_EXCEPTION;
-  #endif
+  // Tâche 12 : Demander une case mémoire physique libre
+  int pp = gPhysicalMemManager->FindFreePage();
+
+  // Tâche 13 : Suspendre la machine s'il n'y a plus de RAM disponible
+  if (pp == INVALID_PAGE) {
+    printf("Not enough free space to handle page fault\n");
+    gMachine->interrupt->Halt(ERROR);
+  }
+
+  char *physAddr = (char *) &(gMachine->mainMemory[pp * gConfig->PageSize]);
+
+  // Tâche 14 : Identifier la nature de la page fautive et remplir la case physique
+  ElfPageInfo &pageInfo = addrspace->elfPages[virtualPage];
+
+  if (pageInfo.inElf && !pageInfo.noBits) {
+    // Code ou data initialisée (présent dans l'ELF)
+    memset(physAddr, 0x0, gConfig->PageSize);
+    addrspace->execFile->ReadAt(physAddr, pageInfo.size, pageInfo.offset);
+  } else {
+    // Pile (inElf == false) ou section BSS / SHT_NOBITS (noBits == true)
+    memset(physAddr, 0x0, gConfig->PageSize);
+  }
+
+  return NO_EXCEPTION;
+#endif
 }
