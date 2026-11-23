@@ -48,7 +48,14 @@ PageFaultManager::~PageFaultManager() {}
 */
 ExceptionType
 PageFaultManager::PageFault(uint64_t virtualPage) {
-  printf("**** Warning: page fault manager is not implemented yet\n");
-  exit(ERROR);
-  return ((ExceptionType) 0);
+  #ifdef ETUDIANTS_TP
+    // Demander une case mémoire physique libre (ou évincer une page si la RAM est pleine)
+    int pp = gPhysicalMemManager->FindFreePage();
+    if (pp == INVALID_PAGE) {
+      printf("Not enough free space to handle page fault\n");
+      return BUSERROR_EXCEPTION;
+    }
+
+    return NO_EXCEPTION;
+  #endif
 }
