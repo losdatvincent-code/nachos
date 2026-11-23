@@ -150,6 +150,7 @@ AddrSpace::AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err) {
   // Init the number of memory mapped files to zero
   nb_mapped_files = 0;
 }
+}
 
 //----------------------------------------------------------------------
 /**   Deallocates an address space and in particular frees
