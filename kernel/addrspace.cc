@@ -150,34 +150,47 @@ AddrSpace::AddrSpace(OpenFile *elfFile, Process *p, uint64_t *err) {
       continue;
 
 #ifdef ETUDIANTS_TP
-uint64_t section_addr = elff.getShAddr(i);
-uint64_t section_size = elff.getShSize(i);
-uint64_t section_flags = elff.getShFlags(i);
+    uint64_t section_addr = elff.getShAddr(i);
+    uint64_t section_size = elff.getShSize(i);
+    uint64_t section_offset = elff.getShOffset(i);
+    uint64_t section_flags = elff.getShFlags(i);
+    bool is_nobits = (elff.getShType(i) == SHT_NOBITS);
 
-int first_page = section_addr / gConfig->PageSize;
-int last_page = divRoundUp(section_addr + section_size, gConfig->PageSize);
+    uint64_t section_end = section_addr + section_size;
+    int first_page = section_addr / gConfig->PageSize;
+    int last_page = divRoundUp(section_end, gConfig->PageSize);
 
-for (int virt_page = first_page; virt_page < last_page; virt_page++) {
-  // Marquer explicitement la page comme non valide
-  translationTable->clearBitValid(virt_page);
-  translationTable->clearBitSwap(virt_page);
-  translationTable->clearBitIo(virt_page);
-  translationTable->setAddrDisk(virt_page, INVALID_SECTOR);
+    for (int virt_page = first_page; virt_page < last_page; virt_page++) {
+      // Marquer explicitement la page comme non valide
+      translationTable->clearBitValid(virt_page);
+      translationTable->clearBitSwap(virt_page);
+      translationTable->clearBitIo(virt_page);
+      translationTable->setAddrDisk(virt_page, INVALID_SECTOR);
 
-  // Configurer les permissions d'accès (Read/Write)
-  translationTable->setBitReadAllowed(virt_page);
-  if (section_flags & SHF_WRITE) {
-    translationTable->setBitWriteAllowed(virt_page);
-  } else {
-    translationTable->clearBitWriteAllowed(virt_page);
-  }
+      // Configurer les permissions d'accès (Read/Write)
+      translationTable->setBitReadAllowed(virt_page);
+      if (section_flags & SHF_WRITE) {
+        translationTable->setBitWriteAllowed(virt_page);
+      } else {
+        translationTable->clearBitWriteAllowed(virt_page);
+      }
 
-  // Enregistrer les infos de la section ELF pour le défaut de page
-  elfPages[virt_page].sectionOffset = elff.getShOffset(i);
-  elfPages[virt_page].sectionAddr = section_addr;
-  elfPages[virt_page].sectionSize = section_size;
-  elfPages[virt_page].isBss = (elff.getShType(i) == SHT_NOBITS);
-}
+      // Calcul des bornes de la section à l'intérieur de cette page virtuelle
+      uint64_t page_start = (uint64_t) virt_page * gConfig->PageSize;
+      uint64_t page_end = page_start + gConfig->PageSize;
+      uint64_t copy_start = (section_addr > page_start) ? section_addr : page_start;
+      uint64_t copy_end = (section_end < page_end) ? section_end : page_end;
+
+      elfPages[virt_page].inElf = true;
+      elfPages[virt_page].noBits = is_nobits;
+      elfPages[virt_page].size = (int) (copy_end - copy_start);
+      if (is_nobits) {
+        elfPages[virt_page].offset = -1;
+      } else {
+        elfPages[virt_page].offset =
+            (int64_t) (section_offset + (copy_start - section_addr));
+      }
+    }
 #endif
   }
 
@@ -188,7 +201,6 @@ for (int virt_page = first_page; virt_page < last_page; virt_page++) {
 
   // Init the number of memory mapped files to zero
   nb_mapped_files = 0;
-}
 }
 
 //----------------------------------------------------------------------
